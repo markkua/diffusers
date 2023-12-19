@@ -8,6 +8,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
+| Marigold Monocular Depth Estimation                                                                                                   | A universal monocular depth estimator, utilizing Stable Diffusion, delivering sharp predictions in the wild. [Project page](https://marigoldmonodepth.github.io). [Full codebase](https://github.com/prs-eth/marigold).                                                                                                                                                                                                                                                                                                                                        | [Marigold Depth Estimation](#marigold-depth-estimation)                                   | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/toshas/marigold) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing) | [Bingxin Ke](https://github.com/markkua) and [Anton Obukhov](https://github.com/toshas) |
 | LLM-grounded Diffusion (LMD+)                                                                                                         | LMD greatly improves the prompt following ability of text-to-image generation models by introducing an LLM as a front-end prompt parser and layout planner. [Project page.](https://llm-grounded-diffusion.github.io/) [See our full codebase (also with diffusers).](https://github.com/TonyLianLong/LLM-groundedDiffusion)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [LLM-grounded Diffusion (LMD+)](#llm-grounded-diffusion)                             | [Huggingface Demo](https://huggingface.co/spaces/longlian/llm-grounded-diffusion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SXzMSeAB-LJYISb2yrUOdypLz4OYWUKj) |                [Long (Tony) Lian](https://tonylian.com/) |
 | CLIP Guided Stable Diffusion                                                                                                          | Doing CLIP guidance for text to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                   | [CLIP Guided Stable Diffusion](#clip-guided-stable-diffusion)                             | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/CLIP_Guided_Stable_diffusion_with_diffusers.ipynb) |                [Suraj Patil](https://github.com/patil-suraj/) |
 | One Step U-Net (Dummy)                                                                                                                | Example showcasing of how to use Community Pipelines (see https://github.com/huggingface/diffusers/issues/841)                                                                                                                                                                                                                                                                                                                                                                                           | [One Step U-Net](#one-step-unet)                                                          | -                                                                                                                                                                                                                  |    [Patrick von Platen](https://github.com/patrickvonplaten/) |
@@ -60,6 +61,53 @@ pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custo
 ```
 
 ## Example usages
+
+
+### Marigold Depth Estimation
+
+Marigold is a universal monocular depth estimator that delivers incredibly sharp predicitons in the wild. Based on Stable Diffusion, it is trained with synthetic depth data only and excels in zero-shot adaptation to real-world imagery. This pipeline is an official implementation of the inference process. More details can be found in our [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) (also implemented with diffusers).
+
+![Marigold Teaser](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
+
+This depth estimation pipeline takes in one input image and perform multiple diffusion denoising process to estimate depth maps, which are then merged as the final output. Example code is shown below with optional arguments:
+
+```python
+import numpy as np
+from PIL import Image
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
+    "Bingxin/Marigold",
+    custom_pipeline="marigold_depth_estimation"
+    # torch_dtype=torch.float16,                # (optional) If set to torch.float16, will run with half-precision 
+)
+
+pipe.to("cuda")
+
+image = Image.open("./input_image.jpg")
+
+pipeline_output = pipe(
+    image,                  # Input image.
+    # denoising_steps=10,     # (optional) Number of denoising steps of each inference pass. Default: 10.
+    # ensemble_size=10,       # (optional) Number of inference passes in the ensemble. Default: 10.
+    # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
+    # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
+    # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
+    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral".
+    # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
+)
+
+depth: np.ndarray = pipeline_output.depth_np                    # Predicted depth map
+depth_colored: Image.Image = pipeline_output.depth_colored      # Colorized prediction
+
+# save as uint16 PNG
+depth_uint16 = (depth * 65535.0).astype(np.uint16)
+Image.fromarray(depth_uint16).save("./depth_map.png", mode="I;16")
+
+# save colorized depth map
+depth_colored.save("./depth_colored.png")
+```
+
 
 ### LLM-grounded Diffusion
 
