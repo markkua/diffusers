@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 Bingxin Ke, ETH Zurich and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# This pipeline is an official implementation of paper: https://arxiv.org/abs/2312.02145
-# Original code repository: https://github.com/prs-eth/marigold
-
-# Last modified: 2023-12-15
+# --------------------------------------------------------------------------
+# If you find this code useful, we kindly ask you to cite our paper in your work.
+# Please find bibtex at: https://github.com/prs-eth/Marigold#-citation
+# More information about the method can be found at https://marigoldmonodepth.github.io
+# --------------------------------------------------------------------------
 
 
 import math
@@ -176,7 +176,7 @@ class MarigoldPipeline(DiffusionPipeline):
         # Normalize rgb values
         rgb = np.transpose(image, (2, 0, 1))  # [H, W, rgb] -> [rgb, H, W]
         rgb_norm = rgb / 255.0
-        rgb_norm = torch.from_numpy(rgb_norm).float()
+        rgb_norm = torch.from_numpy(rgb_norm).to(self.dtype)
         rgb_norm = rgb_norm.to(device)
         assert rgb_norm.min() >= 0.0 and rgb_norm.max() <= 1.0
 
@@ -188,7 +188,9 @@ class MarigoldPipeline(DiffusionPipeline):
             _bs = batch_size
         else:
             _bs = self.find_batch_size(
-                ensemble_size=ensemble_size, input_res=max(rgb_norm.shape[1:])
+                ensemble_size=ensemble_size,
+                input_res=max(rgb_norm.shape[1:]),
+                dtype=self.dtype,
             )
 
         single_rgb_loader = DataLoader(
@@ -230,7 +232,7 @@ class MarigoldPipeline(DiffusionPipeline):
         depth_pred = (depth_pred - min_d) / (max_d - min_d)
 
         # Convert to numpy
-        depth_pred = depth_pred.cpu().numpy()
+        depth_pred = depth_pred.cpu().numpy().astype(np.float32)
 
         # Resize back to original resolution
         if match_input_res:
@@ -256,7 +258,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
     def __encode_empty_text(self):
         """
-        Encode text embedding for empty prompt.
+        Encode text embedding for empty prompt
         """
         prompt = ""
         text_inputs = self.tokenizer(
@@ -267,7 +269,7 @@ class MarigoldPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
-        self.empty_text_embed = self.text_encoder(text_input_ids)[0]
+        self.empty_text_embed = self.text_encoder(text_input_ids)[0].to(self.dtype)
 
     @torch.no_grad()
     def single_infer(
@@ -280,7 +282,7 @@ class MarigoldPipeline(DiffusionPipeline):
             rgb_in (torch.Tensor):
                 Input RGB image.
             num_inference_steps (int):
-                Number of diffusion denoising steps (DDIM) during inference.
+                Number of diffusion denoisign steps (DDIM) during inference.
             show_pbar (bool):
                 Display a progress bar of diffusion denoising.
 
@@ -297,7 +299,9 @@ class MarigoldPipeline(DiffusionPipeline):
         rgb_latent = self.encode_rgb(rgb_in)
 
         # Initial depth map (noise)
-        depth_latent = torch.randn(rgb_latent.shape, device=device)  # [B, 4, h, w]
+        depth_latent = torch.randn(
+            rgb_latent.shape, device=device, dtype=self.dtype
+        )  # [B, 4, h, w]
 
         # Batched empty text embedding
         if self.empty_text_embed is None:
@@ -329,12 +333,13 @@ class MarigoldPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             depth_latent = self.scheduler.step(noise_pred, t, depth_latent).prev_sample
+        torch.cuda.empty_cache()
         depth = self.decode_depth(depth_latent)
 
         # clip prediction
         depth = torch.clip(depth, -1.0, 1.0)
         # shift to [0, 1]
-        depth = depth * 2.0 - 1.0
+        depth = (depth + 1.0) / 2.0
 
         return depth
 
@@ -451,7 +456,7 @@ class MarigoldPipeline(DiffusionPipeline):
         return hwc
 
     @staticmethod
-    def find_batch_size(ensemble_size: int, input_res: int) -> int:
+    def find_batch_size(ensemble_size: int, input_res: int, dtype: torch.dtype) -> int:
         """
         Automatically search for suitable operating batch size.
 
@@ -465,24 +470,36 @@ class MarigoldPipeline(DiffusionPipeline):
         # Search table for suggested max. inference batch size
         bs_search_table = [
             # tested on A100-PCIE-80GB
-            {"res": 768, "total_vram": 79, "bs": 35},
-            {"res": 1024, "total_vram": 79, "bs": 20},
+            {"res": 768, "total_vram": 79, "bs": 35, "dtype": torch.float32},
+            {"res": 1024, "total_vram": 79, "bs": 20, "dtype": torch.float32},
             # tested on A100-PCIE-40GB
-            {"res": 768, "total_vram": 39, "bs": 15},
-            {"res": 1024, "total_vram": 39, "bs": 8},
+            {"res": 768, "total_vram": 39, "bs": 15, "dtype": torch.float32},
+            {"res": 1024, "total_vram": 39, "bs": 8, "dtype": torch.float32},
+            {"res": 768, "total_vram": 39, "bs": 30, "dtype": torch.float16},
+            {"res": 1024, "total_vram": 39, "bs": 15, "dtype": torch.float16},
             # tested on RTX3090, RTX4090
-            {"res": 512, "total_vram": 23, "bs": 20},
-            {"res": 768, "total_vram": 23, "bs": 7},
-            {"res": 1024, "total_vram": 23, "bs": 3},
+            {"res": 512, "total_vram": 23, "bs": 20, "dtype": torch.float32},
+            {"res": 768, "total_vram": 23, "bs": 7, "dtype": torch.float32},
+            {"res": 1024, "total_vram": 23, "bs": 3, "dtype": torch.float32},
+            {"res": 512, "total_vram": 23, "bs": 40, "dtype": torch.float16},
+            {"res": 768, "total_vram": 23, "bs": 18, "dtype": torch.float16},
+            {"res": 1024, "total_vram": 23, "bs": 10, "dtype": torch.float16},
             # tested on GTX1080Ti
-            {"res": 512, "total_vram": 10, "bs": 5},
-            {"res": 768, "total_vram": 10, "bs": 2},
+            {"res": 512, "total_vram": 10, "bs": 5, "dtype": torch.float32},
+            {"res": 768, "total_vram": 10, "bs": 2, "dtype": torch.float32},
+            {"res": 512, "total_vram": 10, "bs": 10, "dtype": torch.float16},
+            {"res": 768, "total_vram": 10, "bs": 5, "dtype": torch.float16},
+            {"res": 1024, "total_vram": 10, "bs": 3, "dtype": torch.float16},
         ]
 
-        total_vram = torch.cuda.mem_get_info()[1] / 1024.0**3
+        if not torch.cuda.is_available():
+            return 1
 
+        total_vram = torch.cuda.mem_get_info()[1] / 1024.0**3
+        filtered_bs_search_table = [s for s in bs_search_table if s["dtype"] == dtype]
         for settings in sorted(
-            bs_search_table, key=lambda k: (k["res"], -k["total_vram"])
+            filtered_bs_search_table,
+            key=lambda k: (k["res"], -k["total_vram"]),
         ):
             if input_res <= settings["res"] and total_vram >= settings["total_vram"]:
                 bs = settings["bs"]
@@ -491,6 +508,7 @@ class MarigoldPipeline(DiffusionPipeline):
                 elif bs > math.ceil(ensemble_size / 2) and bs < ensemble_size:
                     bs = math.ceil(ensemble_size / 2)
                 return bs
+
         return 1
 
     @staticmethod
@@ -520,7 +538,8 @@ class MarigoldPipeline(DiffusionPipeline):
             return dist
 
         device = input_images.device
-        dtype = np.float32
+        dtype = input_images.dtype
+        np_dtype = np.float32
 
         original_input = input_images.clone()
         n_img = input_images.shape[0]
@@ -539,18 +558,17 @@ class MarigoldPipeline(DiffusionPipeline):
         _max = np.max(input_images.reshape((n_img, -1)).cpu().numpy(), axis=1)
         s_init = 1.0 / (_max - _min).reshape((-1, 1, 1))
         t_init = (-1 * s_init.flatten() * _min.flatten()).reshape((-1, 1, 1))
-        x = np.concatenate([s_init, t_init]).reshape(-1)
+        x = np.concatenate([s_init, t_init]).reshape(-1).astype(np_dtype)
 
         input_images = input_images.to(device)
 
         # objective function
         def closure(x):
-            x = x.astype(dtype)
             l = len(x)
             s = x[: int(l / 2)]
             t = x[int(l / 2) :]
-            s = torch.from_numpy(s).to(device)
-            t = torch.from_numpy(t).to(device)
+            s = torch.from_numpy(s).to(dtype=dtype).to(device)
+            t = torch.from_numpy(t).to(dtype=dtype).to(device)
 
             transformed_arrays = input_images * s.view((-1, 1, 1)) + t.view((-1, 1, 1))
             dists = inter_distances(transformed_arrays)
@@ -567,7 +585,7 @@ class MarigoldPipeline(DiffusionPipeline):
             far_err = torch.sqrt((1 - torch.max(pred)) ** 2)
 
             err = sqrt_dist + (near_err + far_err) * regularizer_strength
-            err = err.detach().cpu().numpy()
+            err = err.detach().cpu().numpy().astype(np_dtype)
             return err
 
         res = minimize(
@@ -578,14 +596,13 @@ class MarigoldPipeline(DiffusionPipeline):
             options={"maxiter": max_iter, "disp": False},
         )
         x = res.x
-        x = x.astype(dtype)
         l = len(x)
         s = x[: int(l / 2)]
         t = x[int(l / 2) :]
 
         # Prediction
-        s = torch.from_numpy(s).to(device)
-        t = torch.from_numpy(t).to(device)
+        s = torch.from_numpy(s).to(dtype=dtype).to(device)
+        t = torch.from_numpy(t).to(dtype=dtype).to(device)
         transformed_arrays = original_input * s.view(-1, 1, 1) + t.view(-1, 1, 1)
         if "mean" == reduction:
             aligned_images = torch.mean(transformed_arrays, dim=0)
