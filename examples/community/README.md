@@ -62,7 +62,6 @@ pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custo
 
 ## Example usages
 
-
 ### Marigold Depth Estimation
 
 Marigold is a universal monocular depth estimator that delivers accurate and sharp predictions in the wild. Based on Stable Diffusion, it is trained exclusively with synthetic depth data and excels in zero-shot adaptation to real-world imagery. This pipeline is an official implementation of the inference process. More details can be found on our [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) (also implemented with diffusers).
@@ -107,7 +106,6 @@ Image.fromarray(depth_uint16).save("./depth_map.png", mode="I;16")
 # Save colorized depth map
 depth_colored.save("./depth_colored.png")
 ```
-
 
 ### LLM-grounded Diffusion
 
