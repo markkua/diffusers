@@ -185,7 +185,7 @@ class MarigoldPipeline(DiffusionPipeline):
         if batch_size > 0:
             _bs = batch_size
         else:
-            _bs = self.find_batch_size(
+            _bs = self._find_batch_size(
                 ensemble_size=ensemble_size,
                 input_res=max(rgb_norm.shape[1:]),
                 dtype=self.dtype,
@@ -254,7 +254,7 @@ class MarigoldPipeline(DiffusionPipeline):
             uncertainty=pred_uncert,
         )
 
-    def __encode_empty_text(self):
+    def _encode_empty_text(self):
         """
         Encode text embedding for empty prompt.
         """
@@ -293,7 +293,7 @@ class MarigoldPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps  # [T]
 
         # Encode image
-        rgb_latent = self.encode_rgb(rgb_in)
+        rgb_latent = self._encode_rgb(rgb_in)
 
         # Initial depth map (noise)
         depth_latent = torch.randn(
@@ -302,7 +302,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
         # Batched empty text embedding
         if self.empty_text_embed is None:
-            self.__encode_empty_text()
+            self._encode_empty_text()
         batch_empty_text_embed = self.empty_text_embed.repeat(
             (rgb_latent.shape[0], 1, 1)
         )  # [B, 2, 1024]
@@ -331,7 +331,7 @@ class MarigoldPipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             depth_latent = self.scheduler.step(noise_pred, t, depth_latent).prev_sample
         torch.cuda.empty_cache()
-        depth = self.decode_depth(depth_latent)
+        depth = self._decode_depth(depth_latent)
 
         # clip prediction
         depth = torch.clip(depth, -1.0, 1.0)
@@ -340,7 +340,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
         return depth
 
-    def encode_rgb(self, rgb_in: torch.Tensor) -> torch.Tensor:
+    def _encode_rgb(self, rgb_in: torch.Tensor) -> torch.Tensor:
         """
         Encode RGB image into latent.
 
@@ -359,7 +359,7 @@ class MarigoldPipeline(DiffusionPipeline):
         rgb_latent = mean * self.rgb_latent_scale_factor
         return rgb_latent
 
-    def decode_depth(self, depth_latent: torch.Tensor) -> torch.Tensor:
+    def _decode_depth(self, depth_latent: torch.Tensor) -> torch.Tensor:
         """
         Decode depth latent into depth map.
 
@@ -455,7 +455,7 @@ class MarigoldPipeline(DiffusionPipeline):
         return hwc
 
     @staticmethod
-    def find_batch_size(ensemble_size: int, input_res: int, dtype: torch.dtype) -> int:
+    def _find_batch_size(ensemble_size: int, input_res: int, dtype: torch.dtype) -> int:
         """
         Automatically search for suitable operating batch size.
 
