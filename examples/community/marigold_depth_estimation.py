@@ -47,11 +47,11 @@ class MarigoldDepthOutput(BaseOutput):
     Output class for Marigold monocular depth prediction pipeline.
 
     Args:
-        depth_np (np.ndarray):
-            Predicted depth map, with depth values in the range of [0, 1]
-        depth_colored (PIL.Image.Image):
-            Colorized depth map, with the shape of [3, H, W] and values in [0, 1]
-        uncertainty (None` or `np.ndarray):
+        depth_np (`np.ndarray`):
+            Predicted depth map, with depth values in the range of [0, 1].
+        depth_colored (`PIL.Image.Image`):
+            Colorized depth map, with the shape of [3, H, W] and values in [0, 1].
+        uncertainty (`None` or `np.ndarray`):
             Uncalibrated uncertainty(MAD, median absolute deviation) coming from ensembling.
     """
 
@@ -62,22 +62,22 @@ class MarigoldDepthOutput(BaseOutput):
 
 class MarigoldPipeline(DiffusionPipeline):
     """
-    Pipeline for monocular depth estimation using Marigold: https://arxiv.org/abs/2312.02145.
+    Pipeline for monocular depth estimation using Marigold: https://marigoldmonodepth.github.io.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        unet (UNet2DConditionModel):
+        unet (`UNet2DConditionModel`):
             Conditional U-Net to denoise the depth latent, conditioned on image latent.
-        vae (AutoencoderKL):
+        vae (`AutoencoderKL`):
             Variational Auto-Encoder (VAE) Model to encode and decode images and depth maps
             to and from latent representations.
-        scheduler (DDIMScheduler):
+        scheduler (`DDIMScheduler`):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
-        text_encoder (CLIPTextModel):
+        text_encoder (`CLIPTextModel`):
             Text-encoder, for empty text embedding.
-        tokenizer (CLIPTokenizer):
+        tokenizer (`CLIPTokenizer`):
             CLIP tokenizer.
     """
 
@@ -121,35 +121,33 @@ class MarigoldPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            input_image (Image):
+            input_image (`Image`):
                 Input RGB (or gray-scale) image.
-            processing_res (int, optional):
+            processing_res (`int`, *optional*, defaults to `768`):
                 Maximum resolution of processing.
                 If set to 0: will not resize at all.
-                Defaults to 768.
-            match_input_res (bool, optional):
+            match_input_res (`bool`, *optional*, defaults to `True`):
                 Resize depth prediction to match input resolution.
                 Only valid if `limit_input_res` is not None.
-                Defaults to True.
-            denoising_steps (int, optional):
+            denoising_steps (`int`, *optional*, defaults to `10`):
                 Number of diffusion denoising steps (DDIM) during inference.
-                Defaults to 10.
-            ensemble_size (int, optional):
+            ensemble_size (`int`, *optional*, defaults to `10`):
                 Number of predictions to be ensembled.
-                Defaults to 10.
-            batch_size (int, optional):
+            batch_size (`int`, *optional*, defaults to `0`):
                 Inference batch size, no bigger than `num_ensemble`.
                 If set to 0, the script will automatically decide the proper batch size.
-                Defaults to 0.
-            show_progress_bar (bool, optional):
+            show_progress_bar (`bool`, *optional*, defaults to `True`):
                 Display a progress bar of diffusion denoising.
-                Defaults to True.
-            color_map (str, optional):
+            color_map (`str`, *optional*, defaults to `"Spectral"`):
                 Colormap used to colorize the depth map.
-                Defaults to "Spectral".
-            ensemble_kwargs ()
+            ensemble_kwargs (`dict`, *optional*, defaults to `None`):
+                Arguments for detailed ensembling settings.
         Returns:
-            `MarigoldDepthOutput`
+            `MarigoldDepthOutput`: Output class for Marigold monocular depth prediction pipeline, including:
+            - **depth_np** (`np.ndarray`) Predicted depth map, with depth values in the range of [0, 1]
+            - **depth_colored** (`PIL.Image.Image`) Colorized depth map, with the shape of [3, H, W] and values in [0, 1]
+            - **uncertainty** (`None` or `np.ndarray`) Uncalibrated uncertainty(MAD, median absolute deviation)
+                    coming from ensembling. None if `ensemble_size = 1`
         """
 
         device = self.device
@@ -258,7 +256,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
     def __encode_empty_text(self):
         """
-        Encode text embedding for empty prompt
+        Encode text embedding for empty prompt.
         """
         prompt = ""
         text_inputs = self.tokenizer(
@@ -279,15 +277,14 @@ class MarigoldPipeline(DiffusionPipeline):
         Perform an individual depth prediction without ensembling.
 
         Args:
-            rgb_in (torch.Tensor):
+            rgb_in (`torch.Tensor`):
                 Input RGB image.
-            num_inference_steps (int):
+            num_inference_steps (`int`):
                 Number of diffusion denoisign steps (DDIM) during inference.
-            show_pbar (bool):
+            show_pbar (`bool`):
                 Display a progress bar of diffusion denoising.
-
         Returns:
-            torch.Tensor: Predicted depth map.
+            `torch.Tensor`: Predicted depth map.
         """
         device = rgb_in.device
 
@@ -348,11 +345,11 @@ class MarigoldPipeline(DiffusionPipeline):
         Encode RGB image into latent.
 
         Args:
-            rgb_in (torch.Tensor):
+            rgb_in (`torch.Tensor`):
                 Input RGB image to be encoded.
 
         Returns:
-            torch.Tensor: Image latent
+            `torch.Tensor`: Image latent.
         """
         # encode
         h = self.vae.encoder(rgb_in)
@@ -367,11 +364,11 @@ class MarigoldPipeline(DiffusionPipeline):
         Decode depth latent into depth map.
 
         Args:
-            depth_latent (torch.Tensor):
+            depth_latent (`torch.Tensor`):
                 Depth latent to be decoded.
 
         Returns:
-            torch.Tensor: Decoded depth map.
+            `torch.Tensor`: Decoded depth map.
         """
         # scale latent
         depth_latent = depth_latent / self.depth_latent_scale_factor
@@ -388,11 +385,13 @@ class MarigoldPipeline(DiffusionPipeline):
         Resize image to limit maximum edge length while keeping aspect ratio.
 
         Args:
-            img (Image.Image): Image to be resized
-            max_edge_resolution (int): Maximum edge length (px).
+            img (`Image.Image`):
+                Image to be resized.
+            max_edge_resolution (`int`):
+                Maximum edge length (pixel).
 
         Returns:
-            Image.Image: Resized image.
+            `Image.Image`: Resized image.
         """
         original_width, original_height = img.size
         downscale_factor = min(
@@ -461,11 +460,13 @@ class MarigoldPipeline(DiffusionPipeline):
         Automatically search for suitable operating batch size.
 
         Args:
-            ensemble_size (int): Number of predictions to be ensembled
-            input_res (int): Operating resolution of the input image.
+            ensemble_size (`int`):
+                Number of predictions to be ensembled.
+            input_res (`int`):
+                Operating resolution of the input image.
 
         Returns:
-            int: Operating batch size
+            `int`: Operating batch size.
         """
         # Search table for suggested max. inference batch size
         bs_search_table = [
